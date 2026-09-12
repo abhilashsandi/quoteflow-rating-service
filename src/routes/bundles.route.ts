@@ -11,7 +11,7 @@ if (!existsSync(BUNDLES_OUT_DIR)) {
 }
 const manifestPath = path.join(BUNDLES_OUT_DIR, 'manifest.json');
 if (!existsSync(manifestPath)) {
-  writeFileSync(manifestPath, JSON.stringify({ configs: {}, validators: {} }, null, 2));
+  writeFileSync(manifestPath, JSON.stringify({ configs: {}, validators: null }, null, 2));
 }
 
 export const bundlesRouter = Router();

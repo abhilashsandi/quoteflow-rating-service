@@ -5,8 +5,8 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: skeleton, persistence, DI wiring, quote lifecycle through rc2 (steps 1-4 of the
-> build). This README grows as each step lands.
+> Status: skeleton, persistence, DI wiring, quote lifecycle through rc2, config bundler
+> (steps 1-5 of the build). This README grows as each step lands.
 
 ## Requirements
 
@@ -59,6 +59,21 @@ index.
 
 `bind` (step 7) adds `POST /quotes/:quoteId/bind`, `GET /quotes/:quoteId/bind-status`, and
 `GET /quotes/:quoteId/bind-events` (SSE).
+
+## Config bundler (Pattern 1)
+
+`src/carriers/acme/routeConfigs/**` authors the Acme Auto form as TypeScript: a
+Pages → Sections → Fields tree (`base.ts`) plus a `Base → Portal → State` override chain
+(`overrides.ts`, `resolve.ts`) that can only change a field's **visibility, options, or
+validator** — never duplicate the field. `npm run build:bundles` (or `npm run dev`, which runs
+it under a watcher) compiles `routeConfigs/index.ts` with esbuild into a content-hashed
+browser ESM chunk under `bundles/configs/acme/`, indexed at `GET /bundles/manifest.json` under
+`configs.acme`. The compiled bundle exports real functions (`getAcmeAutoQuoteConfig`,
+`resolveRouteConfig`), not just data — the browser resolves the final portal+state config
+itself, no extra round trip. `GET /quotes/:quoteId/schemas` serves the DB-stored, customer
+portal / no-state baseline (`carrier_config_versions.json_schema`, seeded directly from this
+same TS source so it can't drift); full portal/state-aware resolution is what the bundle is
+for, exercised end-to-end from `quoteflow-apps`' agent-portal vs. customer-portal.
 
 ## Scripts
 
