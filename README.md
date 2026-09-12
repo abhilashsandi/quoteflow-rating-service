@@ -5,9 +5,9 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: skeleton, persistence, DI wiring, quote lifecycle through bind, config + validator
-> bundlers, RabbitMQ producer + SSE (steps 1-7 of the build). This README grows as each step
-> lands.
+> Status: full quote lifecycle (schema -> rc1 -> rc2 -> bind), config + validator bundlers,
+> RabbitMQ producer + SSE, OpenTelemetry (steps 1-9 of the build). This README grows as the
+> final step (this doc + ADR) lands.
 
 ## Requirements
 
@@ -113,6 +113,14 @@ architectural judgment call this sample is demonstrating.
 | `npm run seed` | seeds the Acme Insurance carrier + one config version |
 | `npm run build` | TypeScript build to `dist/` |
 | `npm run build:bundles` | one-shot esbuild of config + validator bundles |
+
+## Observability
+
+OpenTelemetry (`src/telemetry/otel.ts`, imported first thing in `server.ts` — instrumentation
+patches Express/pg/http at `require()` time, so it has to load before those modules do) auto-
+instruments incoming HTTP requests and outbound Postgres calls, exported to the console by
+default. Point `traceExporter` at an OTLP exporter and a local Jaeger if you want a trace UI;
+console output is enough to see the request -> `pg.connect` -> `pg.query` span tree per call.
 
 ## Design notes
 

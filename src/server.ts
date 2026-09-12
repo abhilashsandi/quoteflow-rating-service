@@ -1,3 +1,4 @@
+import './telemetry/otel';
 import 'reflect-metadata';
 import { createApp } from './app';
 import { env } from './config/env';
