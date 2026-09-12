@@ -14,6 +14,7 @@ const schema: CarrierSchema = {
             { key: 'firstName', label: 'First name', type: 'text', required: true },
             { key: 'dob', label: 'Date of birth', type: 'date', required: true },
             { key: 'middleName', label: 'Middle name', type: 'text', required: false },
+            { key: 'ssn', label: 'SSN', type: 'text', required: true, validator: 'ssn' },
           ],
         },
       ],
@@ -61,6 +62,24 @@ describe('validatePatchOpsAgainstSchema', () => {
   it('rejects unsupported patch ops like remove', () => {
     expect(() =>
       validatePatchOpsAgainstSchema([{ op: 'remove', path: '/driver-info/firstName' }], schema),
+    ).toThrow(HttpError);
+  });
+
+  it('accepts a value that passes its named validator (reuses src/validators)', () => {
+    expect(() =>
+      validatePatchOpsAgainstSchema(
+        [{ op: 'replace', path: '/driver-info/ssn', value: '123-45-6789' }],
+        schema,
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects a value that fails its named validator (invalid SSN prefix)', () => {
+    expect(() =>
+      validatePatchOpsAgainstSchema(
+        [{ op: 'replace', path: '/driver-info/ssn', value: '000-45-6789' }],
+        schema,
+      ),
     ).toThrow(HttpError);
   });
 

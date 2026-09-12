@@ -1,5 +1,6 @@
 import type { Operation } from 'fast-json-patch';
 import { HttpError } from '../middleware/error-handler';
+import { validators, type ValidatorName } from '../validators';
 
 export interface FieldConfig {
   key: string;
@@ -75,6 +76,20 @@ export function validatePatchOpsAgainstSchema(ops: Operation[], schema: CarrierS
     }
     if (field.type === 'date' && typeof value === 'string' && Number.isNaN(Date.parse(value))) {
       throw new HttpError(400, 'field_invalid_date', { pageKey, fieldKey, value });
+    }
+
+    // Reuses the exact same pure function the browser bundle ships (src/validators/**) —
+    // tightening a regex there is a backend-only change that applies here too on redeploy,
+    // with zero duplication of the rule.
+    if (field.validator && typeof value === 'string' && value !== '') {
+      const validate = validators[field.validator as ValidatorName] as
+        ((v: string) => { valid: boolean; message?: string }) | undefined;
+      if (validate) {
+        const result = validate(value);
+        if (!result.valid) {
+          throw new HttpError(400, 'field_validator_failed', { pageKey, fieldKey, message: result.message });
+        }
+      }
     }
   }
 }

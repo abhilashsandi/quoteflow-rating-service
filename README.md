@@ -5,8 +5,8 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: skeleton, persistence, DI wiring, quote lifecycle through rc2, config bundler
-> (steps 1-5 of the build). This README grows as each step lands.
+> Status: skeleton, persistence, DI wiring, quote lifecycle through rc2, config + validator
+> bundlers (steps 1-6 of the build). This README grows as each step lands.
 
 ## Requirements
 
@@ -74,6 +74,30 @@ itself, no extra round trip. `GET /quotes/:quoteId/schemas` serves the DB-stored
 portal / no-state baseline (`carrier_config_versions.json_schema`, seeded directly from this
 same TS source so it can't drift); full portal/state-aware resolution is what the bundle is
 for, exercised end-to-end from `quoteflow-apps`' agent-portal vs. customer-portal.
+
+## Validator bundler (Pattern 2)
+
+`src/validators/*.validator.ts` are pure, browser-safe functions (`validateSsn`,
+`validatePhone`) — the same ESLint rule that guards `routeConfigs/**` also guards this
+directory (no `fs`, `process.env`, or db imports). A carrier config field references one by
+name (`{ validator: 'ssn' }`); `src/validators/index.ts` barrels them into a `validators`
+name -> function registry, bundled by the same esbuild pipeline into
+`bundles/validators/index-<hash>.js`, indexed at `manifest.json`'s `validators` key.
+
+The payoff: `src/quotes/quote-validation.ts` **imports this exact same module directly**
+(unbundled) for server-side re-validation on every `PATCH /quotes/:quoteId` — so tightening
+the SSN regex, or adding a carrier-specific phone format, is a one-file, backend-only change.
+It takes effect server-side on this service's next deploy, and browser-side for every
+frontend the moment it re-fetches the manifest — zero frontend code change, zero frontend
+deploy, and the content hash makes serving a stale cached copy structurally impossible.
+
+The tradeoff, worth naming without being asked: this ships **executable code** to the
+browser, not just data — real arbitrary logic (checksum digits, cross-field checks) at the
+cost of needing to trust that code path (only ever this service's own versioned first-party
+bundles, never `eval` of a string). A pure "config is data" rules engine gives up that power
+in exchange for a smaller trust surface. Pattern 1 (config) stays data-shaped on purpose;
+Pattern 2 (validators) deliberately isn't — picking the right one per situation is the actual
+architectural judgment call this sample is demonstrating.
 
 ## Scripts
 
