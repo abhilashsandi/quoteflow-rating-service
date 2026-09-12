@@ -5,8 +5,9 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: skeleton, persistence, DI wiring, quote lifecycle through rc2, config + validator
-> bundlers (steps 1-6 of the build). This README grows as each step lands.
+> Status: skeleton, persistence, DI wiring, quote lifecycle through bind, config + validator
+> bundlers, RabbitMQ producer + SSE (steps 1-7 of the build). This README grows as each step
+> lands.
 
 ## Requirements
 
@@ -57,8 +58,10 @@ index.
 | `PATCH /quotes/:quoteId` `[JSON Patch ops]` | -> rc1 | applies `add`/`replace` ops at `/pageKey/fieldKey`, re-validated server-side against the resolved config (never trusts the client), then computes a mock rate |
 | `POST /quotes/:quoteId/reports` | -> rc2 | simulates an MVR lookup (fixed delay) and re-rates; 400s if the quote hasn't reached rc1 yet |
 
-`bind` (step 7) adds `POST /quotes/:quoteId/bind`, `GET /quotes/:quoteId/bind-status`, and
-`GET /quotes/:quoteId/bind-events` (SSE).
+| `POST /quotes/:quoteId/bind` | -> bind | 400s unless the quote is at rc2; creates a `carrier_jobs` row and publishes `carrier.bind.requested` to RabbitMQ (this service only produces — the consumer lives in `quoteflow-apps`' automation-worker) |
+| `GET /quotes/:quoteId/bind-status` | bind | polls the latest job's status/attempt_count/last_error |
+| `GET /quotes/:quoteId/bind-events` | bind | Server-Sent Events stream of the same, pushed live as the worker reports progress |
+| `PATCH /internal/carrier-jobs/:jobId` | bind | **server-to-server only, no CORS** — the automation-worker's progress callback; marks the quote `bound` on `succeeded` and pushes an SSE event to any open `bind-events` connection for that quote |
 
 ## Config bundler (Pattern 1)
 

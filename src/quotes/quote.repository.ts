@@ -69,6 +69,7 @@ export async function updateQuote(
     answers: Record<string, Record<string, unknown>>;
     funnel_stage: string;
     current_page_key: string;
+    status: string;
   }>,
 ): Promise<QuoteRow> {
   const [row] = await db<QuoteRow>('quotes')
@@ -76,5 +77,47 @@ export async function updateQuote(
     .update({ ...patch, updated_at: db.fn.now() })
     .returning('*');
   if (!row) throw new Error(`updateQuote: no quote found for id ${id}`);
+  return row;
+}
+
+export const CARRIER_JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead_lettered'] as const;
+export type CarrierJobStatus = (typeof CARRIER_JOB_STATUSES)[number];
+
+export interface CarrierJobRow {
+  id: string;
+  quote_id: string;
+  carrier_id: string;
+  status: CarrierJobStatus;
+  attempt_count: number;
+  last_error: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export async function insertCarrierJob(data: { quoteId: string; carrierId: string }): Promise<CarrierJobRow> {
+  const [row] = await db<CarrierJobRow>('carrier_jobs')
+    .insert({ quote_id: data.quoteId, carrier_id: data.carrierId, status: 'pending' })
+    .returning('*');
+  if (!row) throw new Error('insertCarrierJob: insert returned no row');
+  return row;
+}
+
+export function findCarrierJobById(id: string): Promise<CarrierJobRow | undefined> {
+  return db<CarrierJobRow>('carrier_jobs').where({ id }).first();
+}
+
+export function findLatestCarrierJobByQuoteId(quoteId: string): Promise<CarrierJobRow | undefined> {
+  return db<CarrierJobRow>('carrier_jobs').where({ quote_id: quoteId }).orderBy('created_at', 'desc').first();
+}
+
+export async function updateCarrierJob(
+  id: string,
+  patch: Partial<{ status: CarrierJobStatus; last_error: string | null; attempt_count: number }>,
+): Promise<CarrierJobRow> {
+  const [row] = await db<CarrierJobRow>('carrier_jobs')
+    .where({ id })
+    .update({ ...patch, updated_at: db.fn.now() })
+    .returning('*');
+  if (!row) throw new Error(`updateCarrierJob: no job found for id ${id}`);
   return row;
 }

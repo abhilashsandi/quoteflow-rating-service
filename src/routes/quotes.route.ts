@@ -3,6 +3,8 @@ import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { bindQuoteIdMiddleware } from '../logging/request-context';
 import { HttpError } from '../middleware/error-handler';
+import * as bindService from '../quotes/bind.service';
+import { subscribeBindProgress } from '../quotes/bind-events';
 import * as quoteService from '../quotes/quote.service';
 
 export const quotesRouter = Router();
@@ -73,4 +75,57 @@ quotesRouter.post('/quotes/:quoteId/reports', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+quotesRouter.post('/quotes/:quoteId/bind', async (req, res, next) => {
+  try {
+    const job = await bindService.requestBind(req.params.quoteId);
+    res.status(202).json({
+      jobId: job.id,
+      quoteId: job.quote_id,
+      status: job.status,
+      attemptCount: job.attempt_count,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+quotesRouter.get('/quotes/:quoteId/bind-status', async (req, res, next) => {
+  try {
+    const job = await bindService.getBindStatus(req.params.quoteId);
+    res.json({
+      jobId: job.id,
+      quoteId: job.quote_id,
+      status: job.status,
+      attemptCount: job.attempt_count,
+      lastError: job.last_error,
+      updatedAt: job.updated_at,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+quotesRouter.get('/quotes/:quoteId/bind-events', (req, res) => {
+  const { quoteId } = req.params;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+
+  const unsubscribe = subscribeBindProgress(quoteId, (event) => {
+    res.write(`event: bind-progress\ndata: ${JSON.stringify(event)}\n\n`);
+  });
+
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
+  });
 });
