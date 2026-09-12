@@ -35,7 +35,7 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('carriers').del();
 
   const [carrier] = await knex('carriers')
-    .insert({ name: 'Acme Insurance', is_active: true })
+    .insert({ name: 'Acme Insurance', code: 'acme', is_active: true })
     .returning(['id']);
 
   await knex('carrier_config_versions').insert({
