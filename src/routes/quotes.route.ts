@@ -40,6 +40,9 @@ quotesRouter.get('/quotes/:quoteId/schemas', async (req, res, next) => {
       carrier: { code: carrier.code, name: carrier.name },
       schema,
       bundle,
+      // So a resume link (quoteId with no browser sessionStorage) can hydrate the form from
+      // scratch without a second endpoint — see quoteflow-apps' useQuoteSession.
+      answers: quote.answers,
     });
   } catch (err) {
     next(err);
