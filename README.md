@@ -5,7 +5,7 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: skeleton (step 1 of the build). This README grows as each step lands.
+> Status: skeleton + persistence (steps 1-2 of the build). This README grows as each step lands.
 
 ## Requirements
 
@@ -36,9 +36,10 @@ error if any of these are missing — it never assumes a default connection:
 
 ```bash
 npm install
-createdb quoteflow_rating   # or: docker exec quoteflow-postgres createdb -U postgres quoteflow_rating
-npm run migrate
-npm run seed
+createdb quoteflow_rating   # already created if you used -e POSTGRES_DB=quoteflow_rating above;
+                            # otherwise: docker exec quoteflow-postgres createdb -U postgres quoteflow_rating
+npm run migrate             # applies src/db/migrations/** (carriers, carrier_config_versions, quotes, carrier_jobs)
+npm run seed                # seeds one carrier ("Acme Insurance") + a config version
 npm run dev
 ```
 

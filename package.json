@@ -17,9 +17,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "migrate": "knex --knexfile knexfile.ts migrate:latest",
-    "migrate:rollback": "knex --knexfile knexfile.ts migrate:rollback",
-    "seed": "knex --knexfile knexfile.ts seed:run",
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:rollback": "tsx scripts/migrate.ts rollback",
+    "seed": "tsx scripts/seed.ts",
     "prepare": "husky"
   },
   "dependencies": {
