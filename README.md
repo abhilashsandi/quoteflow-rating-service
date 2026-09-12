@@ -5,9 +5,25 @@ its own form config and field validators to the browser as versioned, cache-bust
 Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
 middleware-ordering trap worth knowing about.
 
-> Status: full quote lifecycle (schema -> rc1 -> rc2 -> bind), config + validator bundlers,
-> RabbitMQ producer + SSE, OpenTelemetry (steps 1-9 of the build). This README grows as the
-> final step (this doc + ADR) lands.
+> Status: complete (all 10 build steps) — full quote lifecycle, both shipped-bundle patterns,
+> RabbitMQ producer + SSE, OpenTelemetry, and this README.
+
+## What this demonstrates
+
+Two architecture patterns, both centered on one idea: **the backend ships executable/compiled
+frontend logic instead of the frontend hardcoding it.**
+
+1. **Config bundler** — a carrier's form (Pages → Sections → Fields, with a
+   Base → Portal → State override chain) is authored as TypeScript here, compiled with esbuild
+   into a content-hashed browser ESM chunk, and served immutably. A config change is a
+   backend-only redeploy.
+2. **Validator bundler** — field-level validation logic (`validateSsn`, `validatePhone`) is a
+   pure function shipped the same way, *and* reused directly (unbundled) for server-side
+   re-validation — one implementation, two runtimes, and the classic "never trust the client"
+   rule enforced without duplicating the rule.
+
+Both are demoed end-to-end against real Postgres/Redis/RabbitMQ, not mocked — see the "Verified
+live" notes in each step's commit message for what was actually exercised.
 
 ## Requirements
 
@@ -49,7 +65,7 @@ Server listens on `:4000`. `GET /health` for liveness, `GET /internal/health` fo
 no-CORS internal namespace, `GET /bundles/manifest.json` for the config/validator bundle
 index.
 
-## Quote lifecycle endpoints (steps 1-4 of `schema -> rc1 -> rc2 -> bind`)
+## Quote lifecycle endpoints (`schema -> rc1 -> rc2 -> bind`)
 
 | Method & path | Stage | What it does |
 |---|---|---|
@@ -57,7 +73,6 @@ index.
 | `GET /quotes/:quoteId/schemas` | schema | returns the carrier-resolved page/section/field config + the bundle manifest URL the frontend renders from |
 | `PATCH /quotes/:quoteId` `[JSON Patch ops]` | -> rc1 | applies `add`/`replace` ops at `/pageKey/fieldKey`, re-validated server-side against the resolved config (never trusts the client), then computes a mock rate |
 | `POST /quotes/:quoteId/reports` | -> rc2 | simulates an MVR lookup (fixed delay) and re-rates; 400s if the quote hasn't reached rc1 yet |
-
 | `POST /quotes/:quoteId/bind` | -> bind | 400s unless the quote is at rc2; creates a `carrier_jobs` row and publishes `carrier.bind.requested` to RabbitMQ (this service only produces — the consumer lives in `quoteflow-apps`' automation-worker) |
 | `GET /quotes/:quoteId/bind-status` | bind | polls the latest job's status/attempt_count/last_error |
 | `GET /quotes/:quoteId/bind-events` | bind | Server-Sent Events stream of the same, pushed live as the worker reports progress |
@@ -126,3 +141,16 @@ console output is enough to see the request -> `pg.connect` -> `pg.query` span t
 
 - [docs/adr/0001-jsonb-answers.md](./docs/adr/0001-jsonb-answers.md) — why quote answers are a
   single JSONB column rather than a normalized table.
+- [CLAUDE.md](./CLAUDE.md) — architecture summary and the middleware-ordering trap
+  (`internalRouter` must be mounted before the CORS-wrapped `apiRouter` in `app.ts`).
+
+## Relationship to `quoteflow-apps`
+
+This service is the system of record and is talked to **only over HTTP** — never a shared
+database connection. `quoteflow-apps` (a separate repo/monorepo: `customer-portal` :3000,
+`agent-portal` :3001, `bff-gateway` :4100, `automation-worker`) is the frontend/orchestration
+layer: it renders the config-driven forms by fetching `/bundles/manifest.json` and this
+service's quote endpoints through `bff-gateway`, and its `automation-worker` is the consumer
+on the other end of `carrier.bind.requested` — it drives a mock Acme carrier portal via
+Playwright and reports progress back through `PATCH /internal/carrier-jobs/:jobId`. Run this
+service first; `quoteflow-apps`' README assumes it's already up on `:4000`.
