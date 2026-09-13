@@ -12,6 +12,19 @@ function flattenAnswers(answers: Record<string, Record<string, unknown>>): Recor
     .reduce<Record<string, unknown>>((acc, [, pageAnswers]) => ({ ...acc, ...pageAnswers }), {});
 }
 
+/** Same shape pullReportAndRerate feeds its own re-rate call with, reconstructed from the
+ * persisted `__reports.mvr` bucket — needed so a recomputed rate (e.g. on schema reload) at
+ * rc2/bind matches the rate that stage actually quoted, not the pre-MVR rc1 figure. */
+function flattenAnswersWithReports(
+  answers: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const reports = answers.__reports as { mvr?: { violations?: unknown } } | undefined;
+  return {
+    ...flattenAnswers(answers),
+    ...(reports?.mvr ? { mvrViolations: reports.mvr.violations } : {}),
+  };
+}
+
 async function loadCarrierAndSchema(carrierId: string): Promise<{
   carrier: repo.CarrierRow;
   schema: CarrierSchema;
@@ -43,15 +56,27 @@ export async function getResolvedSchema(quoteId: string): Promise<{
   carrier: repo.CarrierRow;
   schema: CarrierSchema;
   bundle: { manifestUrl: string; configKey: string };
+  rate: ReturnType<ReturnType<typeof resolveCarrierRatingAdapter>['computeMockRate']> | null;
 }> {
   const quote = await repo.findQuoteById(quoteId);
   if (!quote) throw new HttpError(404, 'quote_not_found', { quoteId });
   const { carrier, schema } = await loadCarrierAndSchema(quote.carrier_id);
+  // rate is a pure function of stored answers (no persistence needed) — see
+  // AcmeAutoRatingAdapter/VantageAutoRatingAdapter.computeMockRate, whose only
+  // non-deterministic field is `ratedAt`. Recomputing here lets a page reload (or a
+  // compare-page fetch well after the original PATCH) see the same price without a DB column.
+  const rate =
+    quote.funnel_stage === 'schema'
+      ? null
+      : resolveCarrierRatingAdapter(carrier.code, LINE_OF_BUSINESS).computeMockRate(
+          flattenAnswersWithReports(quote.answers),
+        );
   return {
     quote,
     carrier,
     schema,
     bundle: { manifestUrl: '/bundles/manifest.json', configKey: carrier.code },
+    rate,
   };
 }
 

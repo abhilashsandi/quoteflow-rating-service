@@ -82,13 +82,19 @@ index.
 | Method & path | Stage | What it does |
 |---|---|---|
 | `POST /quotes` `{ carrierCode }` | creates | resolves the carrier's latest published config, pre-seeds one empty answers object per page (JSON Patch `add` needs an existing parent), returns `quoteId` |
-| `GET /quotes/:quoteId/schemas` | schema | returns the carrier-resolved page/section/field config + the bundle manifest URL the frontend renders from |
+| `GET /quotes/:quoteId/schemas` | schema | returns the carrier-resolved page/section/field config + the bundle manifest URL the frontend renders from, plus the quote's current `rate` (recomputed from stored answers each call — `null` until the quote leaves the `schema` stage; see below) |
 | `PATCH /quotes/:quoteId` `[JSON Patch ops]` | -> rc1 | applies `add`/`replace` ops at `/pageKey/fieldKey`, re-validated server-side against the resolved config (never trusts the client), then computes a mock rate |
 | `POST /quotes/:quoteId/reports` | -> rc2 | simulates an MVR lookup (fixed delay) and re-rates; 400s if the quote hasn't reached rc1 yet |
 | `POST /quotes/:quoteId/bind` | -> bind | 400s unless the quote is at rc2; creates a `carrier_jobs` row and publishes `carrier.bind.requested` to RabbitMQ (this service only produces — the consumer lives in `quoteflow-apps`' automation-worker) |
 | `GET /quotes/:quoteId/bind-status` | bind | polls the latest job's status/attempt_count/last_error |
 | `GET /quotes/:quoteId/bind-events` | bind | Server-Sent Events stream of the same, pushed live as the worker reports progress |
 | `PATCH /internal/carrier-jobs/:jobId` | bind | **server-to-server only, no CORS** — the automation-worker's progress callback; marks the quote `bound` on `succeeded` and pushes an SSE event to any open `bind-events` connection for that quote |
+
+`rate` isn't a stored column — `computeMockRate` is a pure function of the stored `answers` (the
+only non-deterministic field is `ratedAt`), so `GET /quotes/:quoteId/schemas` just recomputes it
+on every call, folding in `__reports.mvr`'s violations once an MVR report has been pulled so the
+figure matches what `POST /quotes/:quoteId/reports` actually quoted. This is what lets
+`quoteflow-apps`' compare page show a quote's price without a second endpoint or a write.
 
 ## Config bundler (Pattern 1)
 

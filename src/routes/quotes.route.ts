@@ -33,7 +33,7 @@ quotesRouter.post('/quotes', async (req, res, next) => {
 
 quotesRouter.get('/quotes/:quoteId/schemas', async (req, res, next) => {
   try {
-    const { quote, carrier, schema, bundle } = await quoteService.getResolvedSchema(req.params.quoteId);
+    const { quote, carrier, schema, bundle, rate } = await quoteService.getResolvedSchema(req.params.quoteId);
     res.json({
       quoteId: quote.id,
       funnelStage: quote.funnel_stage,
@@ -43,6 +43,10 @@ quotesRouter.get('/quotes/:quoteId/schemas', async (req, res, next) => {
       // So a resume link (quoteId with no browser sessionStorage) can hydrate the form from
       // scratch without a second endpoint — see quoteflow-apps' useQuoteSession.
       answers: quote.answers,
+      // Recomputed from stored answers (see getResolvedSchema) rather than persisted — null
+      // until the quote has left the schema stage. Lets a compare page or page reload show
+      // the last-quoted price without a second round trip.
+      rate,
     });
   } catch (err) {
     next(err);
