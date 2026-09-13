@@ -89,6 +89,7 @@ index.
 | `GET /quotes/:quoteId/bind-status` | bind | polls the latest job's status/attempt_count/last_error |
 | `GET /quotes/:quoteId/bind-events` | bind | Server-Sent Events stream of the same, pushed live as the worker reports progress |
 | `PATCH /internal/carrier-jobs/:jobId` | bind | **server-to-server only, no CORS** — the automation-worker's progress callback; marks the quote `bound` on `succeeded` and pushes an SSE event to any open `bind-events` connection for that quote |
+| `GET /internal/quotes/:quoteId` | bind | **server-to-server only, no CORS** — lets the automation-worker read a quote's stored answers (e.g. to fill applicant details into the mock Acme portal's own form) without the public route's CORS requirement |
 
 `rate` isn't a stored column — `computeMockRate` is a pure function of the stored `answers` (the
 only non-deterministic field is `ratedAt`), so `GET /quotes/:quoteId/schemas` just recomputes it

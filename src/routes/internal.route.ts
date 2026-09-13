@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { HttpError } from '../middleware/error-handler';
 import { CARRIER_JOB_STATUSES } from '../quotes/quote.repository';
 import * as bindService from '../quotes/bind.service';
+import * as quoteService from '../quotes/quote.service';
 
 /**
  * Server-to-server routes only (the automation-worker's bind-progress callback in
@@ -16,6 +17,22 @@ export const internalRouter = Router();
 
 internalRouter.get('/internal/health', (_req, res) => {
   res.json({ status: 'ok', scope: 'internal' });
+});
+
+/**
+ * Server-to-server read of a quote's stored answers — the automation-worker's Playwright
+ * driver uses this to fill in applicant details on the mock Acme portal's second page (a real
+ * carrier automation would need the same lookup). Deliberately answers-only, not the full
+ * getResolvedSchema payload (schema/bundle/rate) the public route returns — the worker only
+ * ever needs what it's about to type into a form.
+ */
+internalRouter.get('/internal/quotes/:quoteId', async (req, res, next) => {
+  try {
+    const { quote, carrier } = await quoteService.getResolvedSchema(req.params.quoteId);
+    res.json({ quoteId: quote.id, carrierCode: carrier.code, answers: quote.answers });
+  } catch (err) {
+    next(err);
+  }
 });
 
 const reportProgressSchema = z.object({
