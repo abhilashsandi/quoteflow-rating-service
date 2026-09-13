@@ -1,12 +1,24 @@
 # quoteflow-rating-service
 
-Rating/quoting engine for the fictional carrier **Acme Insurance** — and the piece that ships
-its own form config and field validators to the browser as versioned, cache-busted bundles.
-Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture summary and the
-middleware-ordering trap worth knowing about.
+Rating/quoting engine for two fictional carriers, **Acme Insurance** and **Vantage Direct** —
+and the piece that ships its own form config and field validators to the browser as versioned,
+cache-busted bundles. Portfolio sample; see [CLAUDE.md](./CLAUDE.md) for the architecture
+summary and the middleware-ordering trap worth knowing about.
 
-> Status: complete (all 10 build steps) — full quote lifecycle, both shipped-bundle patterns,
-> RabbitMQ producer + SSE, OpenTelemetry, and this README.
+> Status: complete (all 10 build steps, plus a second carrier) — full quote lifecycle, both
+> shipped-bundle patterns, RabbitMQ producer + SSE, OpenTelemetry, and this README.
+
+## Two carriers, two very different bind stories
+
+Acme and Vantage share every quote-lifecycle code path in this service (same routes, same
+`quote.service.ts`, same JSON Patch validation) — the only thing that differs per carrier is
+config: each has its own `routeConfigs/` (form shape) and its own rating/reports adapter pair,
+resolved via `src/di/container.ts`. What genuinely differs is what happens **after** this
+service hands a bind job to RabbitMQ, in `quoteflow-apps`' `automation-worker`: Acme is bound
+by driving a mock carrier *portal* with Playwright (no API to call instead); Vantage is bound
+by calling a mock carrier *REST API* directly. This service is deliberately blind to that
+distinction — it just publishes `carrier.bind.requested` with a `carrierCode` and lets the
+worker decide. See that repo's README for the worker-side half of this story.
 
 ## What this demonstrates
 
@@ -57,7 +69,7 @@ npm install
 createdb quoteflow_rating   # already created if you used -e POSTGRES_DB=quoteflow_rating above;
                             # otherwise: docker exec quoteflow-postgres createdb -U postgres quoteflow_rating
 npm run migrate             # applies src/db/migrations/** (carriers, carrier_config_versions, quotes, carrier_jobs)
-npm run seed                # seeds one carrier ("Acme Insurance") + a config version
+npm run seed                # seeds both carriers (Acme, Vantage Direct) + a config version each
 npm run dev
 ```
 
@@ -80,14 +92,17 @@ index.
 
 ## Config bundler (Pattern 1)
 
-`src/carriers/acme/routeConfigs/**` authors the Acme Auto form as TypeScript: a
+`src/carriers/<code>/routeConfigs/**` authors each carrier's Auto form as TypeScript: a
 Pages → Sections → Fields tree (`base.ts`) plus a `Base → Portal → State` override chain
 (`overrides.ts`, `resolve.ts`) that can only change a field's **visibility, options, or
-validator** — never duplicate the field. `npm run build:bundles` (or `npm run dev`, which runs
-it under a watcher) compiles `routeConfigs/index.ts` with esbuild into a content-hashed
-browser ESM chunk under `bundles/configs/acme/`, indexed at `GET /bundles/manifest.json` under
-`configs.acme`. The compiled bundle exports real functions (`getAcmeAutoQuoteConfig`,
-`resolveRouteConfig`), not just data — the browser resolves the final portal+state config
+validator** — never duplicate the field. Acme's is one page; Vantage's is two (it also
+collects vehicle info, including a VIN validated by `src/validators/vin.validator.ts`) — the
+schema shape supports either, nothing about it is Acme-specific. `npm run build:bundles` (or
+`npm run dev`, which runs it under a watcher) compiles each carrier's `routeConfigs/index.ts`
+with esbuild into a content-hashed browser ESM chunk under `bundles/configs/<code>/`, indexed
+at `GET /bundles/manifest.json` under `configs.<code>`. The compiled bundle exports real
+functions (`getAcmeAutoQuoteConfig`/`getVantageAutoQuoteConfig`, `resolveRouteConfig`), not
+just data — the browser resolves the final portal+state config
 itself, no extra round trip. `GET /quotes/:quoteId/schemas` serves the DB-stored, customer
 portal / no-state baseline (`carrier_config_versions.json_schema`, seeded directly from this
 same TS source so it can't drift); full portal/state-aware resolution is what the bundle is
@@ -96,11 +111,13 @@ for, exercised end-to-end from `quoteflow-apps`' agent-portal vs. customer-porta
 ## Validator bundler (Pattern 2)
 
 `src/validators/*.validator.ts` are pure, browser-safe functions (`validateSsn`,
-`validatePhone`) — the same ESLint rule that guards `routeConfigs/**` also guards this
-directory (no `fs`, `process.env`, or db imports). A carrier config field references one by
-name (`{ validator: 'ssn' }`); `src/validators/index.ts` barrels them into a `validators`
-name -> function registry, bundled by the same esbuild pipeline into
-`bundles/validators/index-<hash>.js`, indexed at `manifest.json`'s `validators` key.
+`validatePhone`, `validateVin`) — the same ESLint rule that guards `routeConfigs/**` also
+guards this directory (no `fs`, `process.env`, or db imports). A carrier config field
+references one by name (`{ validator: 'ssn' }`); `src/validators/index.ts` barrels them into a
+`validators` name -> function registry, bundled by the same esbuild pipeline into
+`bundles/validators/index-<hash>.js`, indexed at `manifest.json`'s `validators` key. The
+registry is shared across every carrier — Vantage's VIN field uses the same lookup mechanism
+Acme's SSN/phone fields do, nothing carrier-specific about the registry itself.
 
 The payoff: `src/quotes/quote-validation.ts` **imports this exact same module directly**
 (unbundled) for server-side re-validation on every `PATCH /quotes/:quoteId` — so tightening
@@ -125,7 +142,7 @@ architectural judgment call this sample is demonstrating.
 | `npm test` | Jest (`*.spec.ts`, co-located with source) |
 | `npm run lint` | ESLint, including the validators-must-be-browser-safe rule |
 | `npm run migrate` / `migrate:rollback` | Knex migrations |
-| `npm run seed` | seeds the Acme Insurance carrier + one config version |
+| `npm run seed` | seeds both carriers (Acme, Vantage Direct) + one config version each |
 | `npm run build` | TypeScript build to `dist/` |
 | `npm run build:bundles` | one-shot esbuild of config + validator bundles |
 
@@ -152,5 +169,6 @@ database connection. `quoteflow-apps` (a separate repo/monorepo: `customer-porta
 layer: it renders the config-driven forms by fetching `/bundles/manifest.json` and this
 service's quote endpoints through `bff-gateway`, and its `automation-worker` is the consumer
 on the other end of `carrier.bind.requested` — it drives a mock Acme carrier portal via
-Playwright and reports progress back through `PATCH /internal/carrier-jobs/:jobId`. Run this
-service first; `quoteflow-apps`' README assumes it's already up on `:4000`.
+Playwright *or* calls a mock Vantage Direct REST API directly, picking per job based on
+`carrierCode`, and reports progress back through `PATCH /internal/carrier-jobs/:jobId` either
+way. Run this service first; `quoteflow-apps`' README assumes it's already up on `:4000`.
