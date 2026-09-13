@@ -48,10 +48,17 @@ export async function buildBundles(): Promise<BundleManifest> {
     path.join(ROOT, 'src/carriers/acme/routeConfigs/index.ts'),
     'configs/acme',
   );
+  const vantageConfigUrl = await bundleEntry(
+    path.join(ROOT, 'src/carriers/vantage/routeConfigs/index.ts'),
+    'configs/vantage',
+  );
   const validatorsUrl = await bundleEntry(path.join(ROOT, 'src/validators/index.ts'), 'validators');
 
   const manifest: BundleManifest = {
-    configs: acmeConfigUrl ? { acme: acmeConfigUrl } : {},
+    configs: {
+      ...(acmeConfigUrl ? { acme: acmeConfigUrl } : {}),
+      ...(vantageConfigUrl ? { vantage: vantageConfigUrl } : {}),
+    },
     validators: validatorsUrl ?? null,
   };
 
