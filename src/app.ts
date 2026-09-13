@@ -21,8 +21,11 @@ export function createApp(): Express {
   // and container health checks never send an Origin header either.
   app.use(healthRouter);
 
-  // Immutable, content-hashed config/validator bundles — served with long-lived cache headers.
-  app.use('/bundles', bundlesRouter);
+  // Immutable, content-hashed config/validator bundles — served with long-lived cache headers
+  // and permissive CORS: unlike /quotes, these are public, non-credentialed static assets (no
+  // per-user data), fetched directly by the browser (not proxied through bff-gateway) via
+  // fetch() and dynamic import(), both of which need CORS headers to succeed cross-origin.
+  app.use('/bundles', cors({ origin: true }), bundlesRouter);
 
   // --- Middleware-order trap, on purpose: internal (no-CORS) routes MUST be mounted here,
   // before the `cors()` main API router below. See internal.route.ts for why. ---

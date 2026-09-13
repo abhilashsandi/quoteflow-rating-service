@@ -12,9 +12,13 @@ const envSchema = z.object({
     .string({ required_error: 'RABBITMQ_URL is required (e.g. amqp://guest:guest@localhost:5672)' })
     .min(1, 'RABBITMQ_URL must not be empty'),
   PORT: z.coerce.number().int().positive().default(4000),
+  // Includes bff-gateway's own origin (:4100), not just the two frontend ports: bff-gateway
+  // proxies quote reads/writes here server-to-server and identifies itself with this Origin
+  // header (see quoteflow-apps' RatingServiceClientService) since Node's fetch never sends
+  // one on its own, and this router's CORS policy deliberately requires one.
   CORS_ORIGINS: z
     .string()
-    .default('http://localhost:3000,http://localhost:3001')
+    .default('http://localhost:3000,http://localhost:3001,http://localhost:4100')
     .transform((value) =>
       value
         .split(',')
