@@ -27,6 +27,7 @@ export const acmeAutoQuoteConfig: RouteConfig = {
                 { label: 'Married', value: 'married' },
               ],
             },
+            { key: 'isMarried', label: 'Is married', type: 'checkbox' },
           ],
         },
       ],

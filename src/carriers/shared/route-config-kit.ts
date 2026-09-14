@@ -2,7 +2,7 @@
 // — the generic Page -> Section -> Field schema and the Base -> Portal -> State resolver every
 // carrier's routeConfigs/index.ts uses. No server-only imports here, ever.
 
-export type FieldType = 'text' | 'select' | 'date';
+export type FieldType = 'text' | 'select' | 'date' | 'checkbox';
 export type Portal = 'agent' | 'customer';
 
 export interface SelectOption {
